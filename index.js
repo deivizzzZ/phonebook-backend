@@ -4,7 +4,7 @@ require('./mongo')
 const express = require('express')
 const morgan = require('morgan')
 const cors = require('cors')
-const app = express()
+const errorHandler = require('./middlewares/errorHandler')
 const Person = require('./models/Person')
 
 morgan.token('post-data', (req, res) => {
@@ -13,6 +13,7 @@ morgan.token('post-data', (req, res) => {
   }
 })
 
+const app = express()
 app.use(cors())
 app.use(express.json())
 app.use(morgan((tokens, req, res) => {
@@ -27,29 +28,6 @@ app.use(morgan((tokens, req, res) => {
 }))
 app.use(express.static('build'))
 
-let persons = [
-  // { 
-  //   "id": 1,
-  //   "name": "Arto Hellas", 
-  //   "number": "040-123456"
-  // },
-  // { 
-  //   "id": 2,
-  //   "name": "Ada Lovelace", 
-  //   "number": "39-44-5323523"
-  // },
-  // { 
-  //   "id": 3,
-  //   "name": "Dan Abramov", 
-  //   "number": "12-43-234345"
-  // },
-  // { 
-  //   "id": 4,
-  //   "name": "Mary Poppendieck", 
-  //   "number": "39-23-6423122"
-  // }
-]
-
 app.get('/api/persons', (request, response) => {
   Person.find({}).then(persons => {
     response.json(persons)
@@ -58,10 +36,12 @@ app.get('/api/persons', (request, response) => {
 
 app.get('/info', (request, response) => {
   const time = new Date().toString()
-  response.send(`<p>Phonebook has info for ${persons.length} people</p>\n<p>${time}</p>`)
+  Person.find({}).then(persons => {
+    response.send(`<p>Phonebook has info for ${persons.length} people</p>\n<p>${time}</p>`)
+  })
 })
 
-app.get('/api/persons/:id', (request, response) => {
+app.get('/api/persons/:id', (request, response, next) => {
   const { id } = request.params
   Person.findById(id).then(person => {
     if (person) {
@@ -71,36 +51,52 @@ app.get('/api/persons/:id', (request, response) => {
         error: "Not found"
       })
     }
-  })
+  }).catch(err => next(err))
 })
 
-app.delete('/api/persons/:id', (request, response) => {
+app.put('/api/persons/:id', (request, response, next) => {
+  const { id } = request.params
+  const person = request.body
+  const newPersonInfo = {
+    name: person.name,
+    number: person.number
+  }
+  Person.findByIdAndUpdate(id, newPersonInfo, { new: true }).then(result => {
+    response.json(result)
+  }).catch(err => next(err))
+})
+
+app.delete('/api/persons/:id', (request, response, next) => {
   const { id } = request.params
   Person.findByIdAndDelete(id).then(() => {
     response.status(204).end()
-  })
+  }).catch(err => next(err))
 })
 
-app.post('/api/persons', (request, response) => {
+app.post('/api/persons', (request, response, next) => {
   const person = request.body
   if (!person || !person.name || !person.number) {
     return response.status(400).json({
       error: 'name or number is missing'
     })
   }
-  if (persons.some(el => el.name === person.name)) {
-    return response.status(400).json({
-      error: 'name must be unique'
-    })
-  }
+  Person.find({}).then(persons => {
+    if (persons.some(el => el.name === person.name)) {
+      return response.status(400).json({
+        error: 'name must be unique'
+      })
+    }
+  })
   const newPerson = new Person({
     name: person.name,
     number: person.number
   })
   newPerson.save().then(savedPerson => {
     response.status(201).json(savedPerson)
-  })
+  }).catch(err => next(err))
 })
+
+app.use(errorHandler)
 
 const PORT = process.env.PORT
 app.listen(PORT, () => {
