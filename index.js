@@ -48,7 +48,7 @@ app.get('/api/persons/:id', (request, response, next) => {
       response.json(person)
     } else {
       response.status(404).json({
-        error: "Not found"
+        error: 'Not found'
       })
     }
   }).catch(err => next(err))
